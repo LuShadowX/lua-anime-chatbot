@@ -1,9 +1,8 @@
-# 🎌 Lua — AI Anime Chatbot
+#  Lua — Anime Chatbot
 
 ### 🔗 Live demo: **https://lua-anime-chatbot.onrender.com**
-_(Free host — the first load after it's been idle can take ~50 seconds to wake up.)_
 
-An LLM-powered anime chatbot that actually knows its stuff — built by **Lukshya Supyal** ("Shadow_lu").
+An LLM-powered anime chatbot that actually knows its stuff.Just try it but dont use all tokens.
 
 ## What it does
 - **Live, real data** from the [AniList](https://anilist.co) API + [Fandom](https://www.fandom.com) & Wikipedia — plot, episodes, ratings, characters, relationships, lore.
@@ -23,4 +22,4 @@ python app.py                 # → http://127.0.0.1:5000
 See [`DESIGN.md`](DESIGN.md) — the house style: calm, aesthetic, effortless.
 
 ---
-_Built to a professional standard. Need an AI chatbot for your business? Let's talk._
+
