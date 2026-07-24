@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Serene Spa · AI Concierge (Demo)</title>
+<style>
+  :root{
+    --hero:#5E8B7E; --hero-soft:#7FB3A3; --accent:#E8A87C;
+    --cream:#FBF7F0; --card:#ffffff; --text:#2E3A38; --muted:#7C8B87;
+    --bot-bubble:#EEF4F1; --user-bubble:#5E8B7E; --line:#E7E0D5;
+    --shadow:0 18px 50px -20px rgba(46,58,56,.35);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --cream:#151E1C; --card:#1C2624; --text:#EAF2EE; --muted:#9BB0AA;
+      --bot-bubble:#243230; --user-bubble:#5E8B7E; --line:#2C3A37;
+      --shadow:0 18px 50px -18px rgba(0,0,0,.6); }
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{
+    font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    background:
+      radial-gradient(1200px 600px at 80% -10%, rgba(127,179,163,.25), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(232,168,124,.18), transparent 60%),
+      var(--cream);
+    color:var(--text); min-height:100vh;
+    display:flex; align-items:center; justify-content:center; padding:24px;
+  }
+  .wrap{ width:100%; max-width:1040px; display:grid; grid-template-columns:1fr 400px; gap:48px; align-items:center; }
+  @media (max-width:880px){ .wrap{ grid-template-columns:1fr; gap:28px; max-width:440px } .intro{ text-align:center } }
+  /* Left intro */
+  .badge{ display:inline-flex; align-items:center; gap:8px; font-size:13px; font-weight:600; letter-spacing:.4px;
+    color:var(--hero); background:rgba(94,139,126,.12); padding:7px 14px; border-radius:100px; margin-bottom:22px }
+  .badge .dot{ width:8px;height:8px;border-radius:50%;background:var(--hero-soft);box-shadow:0 0 10px var(--hero-soft) }
+  .intro h1{ font-size:44px; line-height:1.08; font-weight:800; letter-spacing:-1px; margin-bottom:16px }
+  .intro h1 span{ color:var(--hero) }
+  .intro p{ font-size:18px; color:var(--muted); line-height:1.55; max-width:420px }
+  .intro .note{ margin-top:22px; font-size:13px; color:var(--muted); opacity:.85 }
+  /* Chat card */
+  .chat{ background:var(--card); border-radius:24px; box-shadow:var(--shadow); overflow:hidden;
+    display:flex; flex-direction:column; height:600px; border:1px solid var(--line) }
+  .chat-head{ display:flex; align-items:center; gap:12px; padding:18px 20px; border-bottom:1px solid var(--line) }
+  .avatar{ width:44px;height:44px;border-radius:50%; background:linear-gradient(135deg,var(--hero),var(--hero-soft));
+    display:flex;align-items:center;justify-content:center;font-size:22px }
+  .chat-head .who b{ display:block; font-size:15px } .chat-head .who small{ color:var(--hero); font-size:12px; font-weight:600 }
+  .chat-head .who small::before{ content:'●'; color:#4caf82; margin-right:5px; font-size:9px; vertical-align:middle }
+  .demo-tag{ margin-left:auto; font-size:11px; color:var(--muted); border:1px solid var(--line); padding:4px 9px; border-radius:8px }
+  .msgs{ flex:1; overflow-y:auto; padding:22px 20px; display:flex; flex-direction:column; gap:12px; scroll-behavior:smooth }
+  .row{ display:flex; gap:9px; max-width:85%; animation:rise .35s ease both }
+  @keyframes rise{ from{opacity:0; transform:translateY(8px)} to{opacity:1;transform:none} }
+  .row.bot{ align-self:flex-start } .row.user{ align-self:flex-end; flex-direction:row-reverse }
+  .bubble{ padding:11px 15px; border-radius:16px; font-size:14.5px; line-height:1.5 }
+  .row.bot .bubble{ background:var(--bot-bubble); border-bottom-left-radius:5px }
+  .row.user .bubble{ background:var(--user-bubble); color:#fff; border-bottom-right-radius:5px }
+  .bubble b{ font-weight:700 }
+  .chips{ display:flex; flex-wrap:wrap; gap:8px; padding:0 20px 8px }
+  .chip{ font-size:13px; font-weight:600; color:var(--hero); background:transparent; border:1.5px solid rgba(94,139,126,.35);
+    padding:8px 13px; border-radius:100px; cursor:pointer; transition:.18s }
+  .chip:hover{ background:var(--hero); color:#fff; border-color:var(--hero); transform:translateY(-1px) }
+  .typing .bubble{ display:flex; gap:4px; align-items:center }
+  .typing span{ width:7px;height:7px;border-radius:50%;background:var(--muted);animation:blink 1.2s infinite both }
+  .typing span:nth-child(2){animation-delay:.2s} .typing span:nth-child(3){animation-delay:.4s}
+  @keyframes blink{0%,80%,100%{opacity:.3}40%{opacity:1}}
+  .compose{ display:flex; gap:10px; padding:14px 16px; border-top:1px solid var(--line) }
+  .compose input{ flex:1; border:1px solid var(--line); background:transparent; color:var(--text);
+    border-radius:100px; padding:12px 18px; font-size:14.5px; outline:none }
+  .compose input:focus{ border-color:var(--hero-soft) }
+  .send{ width:46px; height:46px; border:none; border-radius:50%; background:var(--hero); color:#fff;
+    font-size:18px; cursor:pointer; transition:.18s } .send:hover{ background:#4d7568; transform:scale(1.05) }
+  .toast{ position:fixed; bottom:26px; left:50%; transform:translateX(-50%) translateY(20px);
+    background:var(--accent); color:#3a2b1e; font-weight:700; font-size:14px; padding:13px 22px; border-radius:14px;
+    box-shadow:var(--shadow); opacity:0; transition:.4s; pointer-events:none }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0) }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="intro">
+      <div class="badge"><span class="dot"></span> AI CONCIERGE · LIVE DEMO</div>
+      <h1>Meet the <span>Serene Spa</span> assistant.</h1>
+      <p>It answers questions, shares prices, and books appointments — 24/7, in a calm voice that matches your brand. This is a working demo built by Lukshya ("Shadow_lu").</p>
+      <p class="note">✨ Try: “What are your prices?”, “Book an appointment”, or “Are you open on Sunday?”</p>
+    </div>
+
+    <div class="chat">
+      <div class="chat-head">
+        <div class="avatar">🌿</div>
+        <div class="who"><b>Serene Spa</b><small>AI Concierge · online</small></div>
+        <div class="demo-tag">Demo</div>
+      </div>
+      <div class="msgs" id="msgs"></div>
+      <div class="chips" id="chips"></div>
+      <div class="compose">
+        <input id="input" placeholder="Type your message…" autocomplete="off">
+        <button class="send" id="send" aria-label="Send">➤</button>
+      </div>
+    </div>
+  </div>
+  <div class="toast" id="toast">🎉 New lead captured — sent to reception!</div>
+
+<script>
+/* ---- Serene Spa demo knowledge + logic ----
+   Self-contained. No external calls. Structured so a real OpenAI/Claude
+   call can drop into `respond()` for full natural-language understanding. */
+const KB = {
+  services: [
+    ["Swedish Massage (60 min)", "₹2,400"],
+    ["Deep Tissue Massage (60 min)", "₹2,800"],
+    ["Aromatherapy Facial (45 min)", "₹2,000"],
+    ["Hot Stone Therapy (75 min)", "₹3,200"],
+    ["Signature Serene Ritual (90 min)", "₹4,500"],
+  ],
+  hours: "We're open <b>Mon–Sat, 9 AM – 8 PM</b>, and <b>Sunday 10 AM – 6 PM</b>.",
+  location: "We're at <b>12 Lakeview Road, Dehradun</b> — free parking right out front. 🚗",
+  gift: "Yes! Gift cards start at <b>₹1,500</b> and can be used for any service. Want me to note your interest?",
+  cancel: "Free cancellation up to <b>4 hours</b> before your appointment — no charge. 💚",
+};
+const chipsFor = {
+  main: ["Book an appointment", "Services & prices", "Hours & location", "Gift cards"],
+};
+const msgs = document.getElementById('msgs'), chipsEl = document.getElementById('chips'),
+      input = document.getElementById('input'), toast = document.getElementById('toast');
+let state = null, booking = {};
+
+function add(text, who){
+  const row = document.createElement('div'); row.className = 'row ' + who;
+  row.innerHTML = `<div class="bubble">${text}</div>`;
+  msgs.appendChild(row); msgs.scrollTop = msgs.scrollHeight;
+}
+function typing(){
+  const row = document.createElement('div'); row.className='row bot typing'; row.id='typing';
+  row.innerHTML='<div class="bubble"><span></span><span></span><span></span></div>';
+  msgs.appendChild(row); msgs.scrollTop = msgs.scrollHeight;
+}
+function botSay(text, chips){
+  typing();
+  setTimeout(()=>{
+    document.getElementById('typing')?.remove();
+    add(text, 'bot');
+    setChips(chips || []);
+  }, 550 + Math.random()*400);
+}
+function setChips(list){
+  chipsEl.innerHTML='';
+  list.forEach(label=>{
+    const b=document.createElement('button'); b.className='chip'; b.textContent=label;
+    b.onclick=()=>handle(label); chipsEl.appendChild(b);
+  });
+}
+function servicesText(){
+  return "Here are our treatments:<br>" + KB.services.map(s=>`• ${s[0]} — <b>${s[1]}</b>`).join("<br>") +
+         "<br><br>Shall I book one for you?";
+}
+function showToast(){ toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), 3200); }
+
+function match(t){
+  t = t.toLowerCase();
+  if(/(price|cost|rate|charge|how much)/.test(t)) return 'services';
+  if(/(service|treatment|massage|facial|offer)/.test(t)) return 'services';
+  if(/(book|appointment|reserve|slot|schedule)/.test(t)) return 'book';
+  if(/(hour|open|close|timing|sunday|time)/.test(t)) return 'hours';
+  if(/(where|location|address|parking|reach)/.test(t)) return 'location';
+  if(/(gift|voucher|card)/.test(t)) return 'gift';
+  if(/(cancel|refund|reschedule)/.test(t)) return 'cancel';
+  if(/(human|agent|person|call|contact|staff)/.test(t)) return 'human';
+  if(/(hi|hello|hey|namaste)/.test(t)) return 'hi';
+  return 'unknown';
+}
+
+function handle(text){
+  add(text, 'user'); setChips([]);
+  // Booking flow (state machine)
+  if(state==='service'){ booking.service=text; state='date';
+    return botSay(`Lovely choice — <b>${text}</b>. What day works for you? (e.g. “this Saturday”)`); }
+  if(state==='date'){ booking.date=text; state='time';
+    return botSay(`Got it, <b>${text}</b>. Morning or evening? (e.g. “11 AM” or “5 PM”)`); }
+  if(state==='time'){ booking.time=text; state='name';
+    return botSay(`Perfect. And your name?`); }
+  if(state==='name'){ booking.name=text; state='phone';
+    return botSay(`Thanks, ${text}! A phone number so reception can confirm?`); }
+  if(state==='phone'){ booking.phone=text; state=null;
+    botSay(`All set, ${booking.name}! ✨<br>I've requested <b>${booking.service}</b> on <b>${booking.date}</b> at <b>${booking.time}</b>. Reception will confirm shortly on ${booking.phone}.`, chipsFor.main);
+    return showToast();
+  }
+  // Intent routing
+  const intent = match(text);
+  if(intent==='services') botSay(servicesText(), ["Book an appointment", "Hours & location"]);
+  else if(intent==='book'){ state='service';
+    botSay("Wonderful! Which treatment would you like?", KB.services.map(s=>s[0])); }
+  else if(intent==='hours') botSay(KB.hours, ["Book an appointment", "Hours & location"]);
+  else if(intent==='location') botSay(KB.location, chipsFor.main);
+  else if(intent==='gift') botSay(KB.gift, ["Yes, note my interest", ...chipsFor.main.slice(0,2)]);
+  else if(intent==='cancel') botSay(KB.cancel, chipsFor.main);
+  else if(intent==='human') botSay("Of course — you can reach our team at <b>+91 98765 43210</b> or I can have them call you. Meanwhile, I'm happy to help! 💚", chipsFor.main);
+  else if(intent==='hi') botSay("Hello, and welcome to Serene Spa 🌿 How can I help you today?", chipsFor.main);
+  else if(text==='Yes, note my interest'){ botSay("Noted! Reception will reach out about gift cards. 🎁", chipsFor.main); showToast(); }
+  else botSay("I want to get that right — I can help with <b>bookings, prices, hours, location, and gift cards</b>. Which would you like? (In the full version I'm connected to OpenAI/Claude to answer anything in natural language.)", chipsFor.main);
+}
+
+document.getElementById('send').onclick = ()=>{ const v=input.value.trim(); if(v){ input.value=''; handle(v); } };
+input.addEventListener('keydown', e=>{ if(e.key==='Enter'){ const v=input.value.trim(); if(v){ input.value=''; handle(v); } }});
+
+// Greeting
+setTimeout(()=> botSay("Hello, and welcome to <b>Serene Spa</b> 🌿<br>I'm your AI concierge — I can share prices, answer questions, or book your visit. How can I help?", chipsFor.main), 400);
+</script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+# OS / editor
+.DS_Store
+*.swp
+.vscode/
+.idea/
+
+# Secrets — NEVER commit
+.env
+*.key
+*api*key*
+secrets*
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Runtime / logs
+*.log
+server.log
+
+# Internal ops docs — keep PRIVATE (public repo shows portfolio + code only)
+ledger.md
+PLAYBOOK.md
+fiverr-profile.md
+GEMINI-BRIEF.md
+gigs/
