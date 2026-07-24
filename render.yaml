@@ -1,0 +1,16 @@
+# Render Blueprint — deploys the Lua anime chatbot as a free web service.
+# In Render: New → Blueprint → pick this repo. It reads this file, then asks you
+# to paste the API key values (they are NOT stored in the repo).
+services:
+  - type: web
+    name: lua-anime-chatbot
+    runtime: python
+    plan: free
+    rootDir: portfolio/anime-sensei
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false          # you paste this in the Render dashboard
+      - key: OPENROUTER_API_KEY
+        sync: false
