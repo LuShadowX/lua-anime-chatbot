@@ -65,7 +65,9 @@ BASE_PERSONA = (
     "who-ends-up-with-who, deaths, plot points — rely ONLY on the VERIFIED DATA and WEB CONTEXT blocks "
     "below. If the WEB CONTEXT is given, treat it as the truth and base your answer on it. If the "
     "answer is NOT in the provided data/context, do NOT guess or invent — say you're not 100% sure and "
-    "offer to dig deeper. NEVER make up character details, ships, or events.\n"
+    "offer to dig deeper. NEVER make up character details, ships, or events. NEVER mention or quote the "
+    "words 'VERIFIED DATA', 'WEB CONTEXT', 'AniList', 'context', or 'sources', and never say the info was "
+    "'provided' or 'given' to you — just answer naturally, as if you simply know it.\n"
     "STYLE RULES:\n"
     "1) Keep replies SHORT — about 2-3 sentences, or a small list. Never a wall of text.\n"
     "2) Use SIMPLE, everyday words anyone can understand.\n"
@@ -152,12 +154,17 @@ def fetch_anime(query):
 
 _CHAR_QUERY = """
 query ($s: String) {
-  Character(search: $s) {
-    name { full }
-    media(type: ANIME, sort: POPULARITY_DESC, perPage: 1) {
-      nodes {
-        title { romaji english } description(asHtml: false) episodes status averageScore
-        seasonYear genres coverImage { large } studios(isMain: true) { nodes { name } }
+  Page(perPage: 6) {
+    characters(search: $s) {
+      name { full }
+      description(asHtml: false)
+      gender
+      age
+      media(type: ANIME, sort: POPULARITY_DESC, perPage: 1) {
+        nodes {
+          title { romaji english } description(asHtml: false) episodes status averageScore
+          seasonYear genres coverImage { large } studios(isMain: true) { nodes { name } }
+        }
       }
     }
   }
@@ -165,45 +172,80 @@ query ($s: String) {
 """
 
 
-def fetch_character(name):
-    """Look up a CHARACTER on AniList → their main anime. Single-word probes are VALIDATED
-    against the returned character's name, so junk words (e.g. 'team') can't match a wrong character."""
-    rec = _char_once(name.strip())            # try the full phrase first
-    if rec:
-        return rec
-    skip = STOP | _PRO | {"he", "she", "him", "her", "his", "hers", "and", "team", "name", "anime"}
-    words = sorted({w.lower() for w in name.split() if len(w) >= 4 and w.lower() not in skip},
-                   key=len, reverse=True)
-    for w in words:
-        rec = _char_once(w)
-        who = rec["characters"][0].lower() if rec and rec.get("characters") else ""
-        if rec and w in who:                  # trust only if the word is truly in the character's name
-            return rec
-    return None
+def _clean_desc(text):
+    """Tidy AniList markup so grounding reads cleanly."""
+    text = re.sub(r"~!|!~", "", text or "")                 # unwrap spoiler markers, keep content
+    text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)     # markdown links -> label
+    text = re.sub(r"__|\*\*", "", text)                     # bold markers
+    text = re.sub(r"<[^>]+>", "", text)                     # stray html
+    return re.sub(r"\s+", " ", text).strip()
 
 
-def _char_once(name):
+def _char_name_score(query, full_name):
+    """How well a candidate's name matches the query. 3 = all query words present,
+    2 = the given (first) name present, 1 = only a shared word (e.g. surname), 0 = none.
+    Requiring >= 2 stops 'Levi Ackerman' resolving to 'Mikasa Ackerman' on the surname."""
+    q = [w for w in re.findall(r"[a-z']+", query.lower())
+         if len(w) >= 2 and w not in STOP and w not in _PRO]
+    n = full_name.lower()
+    if not q:
+        return 0
+    if all(w in n for w in q):
+        return 3
+    if q[0] in n:
+        return 2
+    return 1 if any(w in n for w in q) else 0
+
+
+def _build_char_rec(ch):
+    m = ch["media"]["nodes"][0]
+    return {
+        "title": m["title"].get("english") or m["title"].get("romaji"),
+        "episodes": m.get("episodes"),
+        "status": (m.get("status") or "").replace("_", " ").title(),
+        "score": round(m["averageScore"] / 10, 1) if m.get("averageScore") else None,
+        "year": m.get("seasonYear"), "genres": m.get("genres") or [],
+        "studios": [s["name"] for s in m["studios"]["nodes"]],
+        "characters": [ch["name"]["full"]], "recommendations": [],
+        "cover": (m.get("coverImage") or {}).get("large"),
+        "description": _clean_desc(m.get("description")),
+        "char_name": ch["name"]["full"], "char_desc": _clean_desc(ch.get("description")),
+        "char_gender": ch.get("gender"), "char_age": ch.get("age"),
+    }
+
+
+def _char_search(query):
+    """Search AniList characters and return the best NAME match (score >= 2), or None."""
     try:
-        r = requests.post(ANILIST_URL, json={"query": _CHAR_QUERY, "variables": {"s": name}}, timeout=12)
+        r = requests.post(ANILIST_URL, json={"query": _CHAR_QUERY, "variables": {"s": query}}, timeout=12)
         if r.status_code != 200:
             return None
-        ch = (r.json().get("data") or {}).get("Character")
-        if not ch or not ch["media"]["nodes"]:
-            return None
-        m = ch["media"]["nodes"][0]
-        desc = re.sub(r"<[^>]+>", "", m.get("description") or "").replace("\n", " ").strip()
-        return {
-            "title": m["title"].get("english") or m["title"].get("romaji"),
-            "episodes": m.get("episodes"),
-            "status": (m.get("status") or "").replace("_", " ").title(),
-            "score": round(m["averageScore"] / 10, 1) if m.get("averageScore") else None,
-            "year": m.get("seasonYear"), "genres": m.get("genres") or [],
-            "studios": [s["name"] for s in m["studios"]["nodes"]],
-            "characters": [ch["name"]["full"]], "recommendations": [],
-            "cover": (m.get("coverImage") or {}).get("large"), "description": desc,
-        }
+        chars = (((r.json().get("data") or {}).get("Page") or {}).get("characters")) or []
     except requests.RequestException:
         return None
+    best, best_score = None, 0
+    for ch in chars:
+        if not (ch.get("media") or {}).get("nodes"):
+            continue
+        score = _char_name_score(query, ch["name"]["full"])
+        if score > best_score:                  # first hit wins ties → AniList's most-popular match
+            best, best_score = ch, score
+    return _build_char_rec(best) if best and best_score >= 2 else None
+
+
+def fetch_character(name):
+    """Find the RIGHT character. Tries the full name, then the given (first) name alone —
+    AniList often stores just 'Levi' (not 'Levi Ackerman'), so the full search can return
+    nothing; and scoring stops 'Levi Ackerman' resolving to Mikasa on the shared surname."""
+    name = name.strip()
+    rec = _char_search(name)
+    if rec:
+        return rec
+    words = [w for w in re.findall(r"[A-Za-z']+", name)
+             if len(w) >= 3 and w.lower() not in STOP and w.lower() not in _PRO]
+    if len(words) > 1:                          # retry on the given name only
+        return _char_search(words[0])
+    return None
 
 
 def as_context(a):
@@ -229,6 +271,24 @@ def card(a):
         "title": a["title"], "cover": a["cover"], "score": a["score"],
         "episodes": a["episodes"], "year": a["year"], "genres": a["genres"][:3],
     }
+
+
+def char_block(a):
+    """Grounding text about a character the user asked about — straight from AniList."""
+    if not a or not a.get("char_desc"):
+        return ""
+    meta = []
+    if a.get("char_gender"):
+        meta.append(f"Gender: {a['char_gender']}")
+    if a.get("char_age"):
+        meta.append(f"Age: {a['char_age']}")
+    lines = ["\n\n[VERIFIED CHARACTER DATA from AniList — use this for the character]",
+             f"Name: {a['char_name']}"]
+    if meta:
+        lines.append(" | ".join(meta))
+    lines.append(f"From anime: {a['title']}")
+    lines.append(f"About: {a['char_desc'][:900]}")
+    return "\n".join(lines) + "\n"
 
 
 # --------------------------------------------------------------------------
@@ -337,6 +397,10 @@ _TRAIL = re.compile(r"\s*(?:have|has|about|anime|manga|series|show|from|good|wor
 _ANIME_OF_CHAR = re.compile(r"(what|which)\s+(anime|show|series)|anime\s+(name\s+)?(of|for|with|whose)|"
                             r"character\s+(named|called|name)|from\s+(what|which)\s+(anime|show)|"
                             r"who\s+(is|are)\b", re.I)
+# Softer "this is probably about a person" signal → try a character lookup for bio grounding.
+_CHAR_INTENT = re.compile(r"\b(who\s+is|who's|who\s+are|character|personality|backstory|"
+                          r"tell\s+me\s+about|describe|power|abilit|strongest|weakest|crush|"
+                          r"girlfriend|boyfriend|relationship|voice\s+actor|how\s+old|gender|age)\b", re.I)
 
 
 def _relevant(cand, title):
@@ -383,7 +447,10 @@ def _openai_style(url, key, model, messages, title=None):
                       json={"model": model, "messages": messages, "temperature": 0.55, "max_tokens": 240},
                       timeout=30)
     if r.status_code == 200:
-        return (r.json()["choices"][0]["message"].get("content") or "").strip() or None
+        try:                                    # a 200 can still carry a malformed body
+            return (r.json()["choices"][0]["message"].get("content") or "").strip() or None
+        except (KeyError, IndexError, ValueError):
+            return None
     return None
 
 
@@ -393,7 +460,7 @@ def _openrouter(messages):
             out = _openai_style(OPENROUTER_URL, OPENROUTER_KEY, model, messages, title="Lua")
             if out:
                 return out
-        except requests.RequestException:
+        except Exception:                       # a bad model/response never aborts failover
             pass
     return None
 
@@ -419,10 +486,13 @@ def _gemini(messages):
            f"gemini-2.0-flash:generateContent?key={GEMINI_KEY}")
     r = requests.post(url, json=body, timeout=30)
     if r.status_code == 200:
-        cand = r.json().get("candidates", [])
-        if cand:
-            txt = "".join(p.get("text", "") for p in cand[0].get("content", {}).get("parts", [])).strip()
-            return txt or None
+        try:
+            cand = r.json().get("candidates", [])
+            if cand:
+                txt = "".join(p.get("text", "") for p in cand[0].get("content", {}).get("parts", [])).strip()
+                return txt or None
+        except (KeyError, IndexError, ValueError):
+            return None
     return None
 
 
@@ -446,7 +516,7 @@ def ask_llm(messages):
             out = fn(messages)
             if out:
                 return out
-        except requests.RequestException:
+        except Exception:                       # any provider hiccup → try the next one
             pass
     return "All my brains are at their daily limit right now — give it a minute and try again. 🙏"
 
@@ -469,22 +539,38 @@ def chat():
 
     title = extract_title(msg)
     anime = convo["anime"]
+    prev_title = anime["title"] if anime else None
+    switched = False                                         # did we move to a NEW anime this turn?
     if title:
         new = None
-        if _ANIME_OF_CHAR.search(msg):                       # "what anime is X from" / character lookup
-            new = fetch_character(title)
+        from_char = False
+        if _ANIME_OF_CHAR.search(msg):                       # "who is X" / "what anime is X from"
+            new = fetch_character(title); from_char = new is not None
         if not new:                                          # else resolve as an anime title (strict)
             cand = fetch_anime(title)
             if cand and _relevant(title, cand["title"]):
                 new = cand
+        if not new and _CHAR_INTENT.search(msg):             # soft character question, no anime matched
+            new = fetch_character(title); from_char = new is not None
         if new:                                              # switch context ONLY on a confident match
             anime = new
             convo["anime"] = anime
+            switched = new["title"] != prev_title            # a REAL switch → show the new poster
+            if from_char and new.get("char_desc"):
+                convo["char"] = new                          # remember the character for follow-ups
+            elif switched:
+                convo["char"] = None                         # new anime → drop the old character
         # else: keep the current anime — never clobber context on a vague follow-up
 
-    # Deep fan questions (characters, relationships, lore) → pull web grounding.
+    # The character in focus — freshly looked up, or remembered from earlier this chat, so a
+    # pronoun follow-up ("how tall is he?") still resolves to the right person.
+    is_char_q = bool(_CHAR_INTENT.search(msg) or _ANIME_OF_CHAR.search(msg))
+    active_char = convo.get("char") if is_char_q else None
+
+    # Lore/detail questions pull web grounding — but for a KNOWN character we rely on the rich
+    # AniList bio instead (avoids Fandom returning a wrong page, e.g. an 'Ackerman family' article).
     web_txt, web_src = "", ""
-    if _DETAIL.search(msg) and not _STRUCTURED.search(msg):
+    if _DETAIL.search(msg) and not _STRUCTURED.search(msg) and not active_char:
         web_txt, web_src = web_lookup(msg, anime["title"] if anime else "")
 
     system = BASE_PERSONA + HARU_VOICE          # single default persona — no gender prompt
@@ -492,6 +578,8 @@ def chat():
     messages = [{"role": "system", "content": system}]
     messages += convo["history"][-6:]                # remember the last few turns for continuity
     grounding = as_context(anime)
+    if active_char:
+        grounding += char_block(active_char)
     if web_txt:
         grounding += f"\n\n[WEB CONTEXT from {web_src} — use this to answer]:\n{web_txt[:1400]}\n"
     messages.append({"role": "user", "content": msg + grounding})
@@ -500,7 +588,9 @@ def chat():
 
     convo["history"] = (convo["history"] + [{"role": "user", "content": msg},
                                             {"role": "assistant", "content": reply}])[-12:]
-    return jsonify(reply=reply, card=card(anime) if title and anime else None)
+    # Poster appears ONLY when we switch to a new anime — never repeated on follow-ups,
+    # and never the previous anime's poster on a failed switch.
+    return jsonify(reply=reply, card=card(anime) if switched else None)
 
 
 if __name__ == "__main__":
